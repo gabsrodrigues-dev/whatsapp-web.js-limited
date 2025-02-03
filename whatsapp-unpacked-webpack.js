@@ -354,23 +354,26 @@ const processMediaData = async (
   return mediaData;
 };
 
+const STORAGE_KEY = "crm-cached-contacts";
+
+const getCachedContacts = async () => {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch (e) {
+    return [];
+  }
+};
+ 
+const setCachedContacts = (arr) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+};
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // window.WPP.contact.queryExists(numberId);
 async function contactExists(number) {
-  const STORAGE_KEY = "crm-cached-contacts";
-  const getCachedContacts = () => {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-    } catch (e) {
-      return [];
-    }
-  };
-  const setCachedContacts = (arr) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
-  };
 
-  let cachedContacts = getCachedContacts();
+  let cachedContacts = await getCachedContacts();
 
   // Processa o número recebido
   let numberId = number;
@@ -461,11 +464,11 @@ async function contactExists(number) {
 
 // window.WPP.conn.getMyUserId();
 async function getMyUser() {
-  await window.Store.User.getMaybeMeUser();
+ return await window.Store.User.getMaybeMeUser();
 }
 
 // window.WPP.chat.sendFileMessage
-async function sendMessage(chatId, content, options = {}) {
+async function sendMessage(chatId, content, options = {}) { ////////////////////////////////
   const realChatId = await contactExists(chatId);
   if (!realChatId) return false;
   const chatWid = window.Store.WidFactory.createWid(realChatId);
@@ -520,14 +523,9 @@ async function sendMessage(chatId, content, options = {}) {
     isNewMsg: true,
     type: "chat",
     ...ephemeralFields,
-    ...locationOptions,
-    ..._pollOptions,
     ...attOptions,
     ...(attOptions.toJSON ? attOptions.toJSON() : {}),
     ...quotedMsgOptions,
-    ...vcardOptions,
-    ...buttonOptions,
-    ...listOptions,
     ...botOptions,
     ...extraOptions
   };
@@ -536,13 +534,13 @@ async function sendMessage(chatId, content, options = {}) {
 }
 
 // window.WPP.contact.getProfilePictureUrl(numberId);
-async function getProfileImage(contactId) {
+async function getProfileWhatsappImage(contactId) {
   const realChatId = await contactExists(contactId);
   if (!realChatId) return false;
   const chatWid = window.Store.WidFactory.createWid(realChatId);
   return compareWwebVersions(window.Debug.VERSION, "<", "2.3000.0")
     ? await window.Store.ProfilePic.profilePicFind(chatWid)
-    : await window.Store.ProfilePic.requestProfilePicFromServer(chatWid);
+    : await (window.Store.ProfilePic.requestProfilePicFromServer(chatWid))?.eurl;
 }
 
 // window.WPP.chat.getActiveChat();
@@ -550,8 +548,8 @@ async function getActiveChat() {
   return await window.Store.Chat.getActive();
 }
 
-// window.WPP.chat.list();
-async function getChats() {
+// window.WPP.chat.list(); 
+async function getChats() { ////////////////////////////////
   const chats = window.Store.Chat.getModelsArray();
   const chatPromises = chats.map((chat) => getChatModel(chat));
   return await Promise.all(chatPromises);
@@ -579,8 +577,10 @@ async function closeChat() {
   return true;
 }
 
-// window.WPP.on("chat.active_chat", (chat) => {});
-window.Store.Chat.on("get_conversation_header_offset", async () => {
-  const chat = await getActiveChat();
-  activeChatEvent(chat);
-});
+const originalOn = window.Store.Cmd.on;
+window.Store.Cmd.on = async function (eventName, ...args) {
+  if (eventName === "get_conversation_header_offset") 
+    activeChatEvent();
+  
+  return originalOn.apply(this, [eventName, ...args]);
+};
